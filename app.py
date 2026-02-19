@@ -1,66 +1,78 @@
 import streamlit as st
+import pandas as pd
 
-# Set up the page title
-st.set_page_config(page_title="File Matcher", page_icon="📁")
-st.title("📁 File Matcher App")
-st.write("Compare your uploaded files against a pasted list of expected file names.")
+st.set_page_config(page_title="Tabular File Matcher", layout="wide")
+st.title("📋 Tabular File Matcher")
+st.write("Paste your 3-column table and upload files to verify matches.")
 
-col1, col2 = st.columns(2)
+# Create two main columns for input
+col1, col2 = st.columns([1, 2])
 
 with col1:
     st.subheader("1. Upload Files")
-    # Allow multiple file uploads
-    uploaded_files = st.file_uploader("Upload your files here:", accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Drop files here", accept_multiple_files=True)
+    uploaded_names = [f.name for f in uploaded_files] if uploaded_files else []
     
-    # Extract the names of the uploaded files
-    uploaded_filenames = []
-    if uploaded_files:
-        uploaded_filenames = [file.name for file in uploaded_files]
-        st.write(f"**Total files uploaded:** {len(uploaded_filenames)}")
+    if uploaded_names:
+        st.success(f"{len(uploaded_names)} files uploaded.")
 
 with col2:
-    st.subheader("2. Paste Expected Names")
-    # Text area for pasting filenames (one per line)
-    pasted_text = st.text_area("Paste your list of file names (one per line):", height=150)
+    st.subheader("2. Paste Table Data")
+    st.info("Paste your 3 columns below (Ctrl+V). Tip: Ensure your 'File Name' column is included.")
     
-    # Clean up the pasted text into a list of strings
-    expected_filenames = []
-    if pasted_text:
-        # Split by new line, remove empty spaces, and ignore blank lines
-        expected_filenames = [name.strip() for name in pasted_text.split('\n') if name.strip()]
-        st.write(f"**Total names pasted:** {len(expected_filenames)}")
+    # Initialize an empty dataframe with 3 columns if not already there
+    default_df = pd.DataFrame([["", "", ""]] * 5, columns=["Column 1", "Column 2", "File Name"])
+    
+    # Data editor allows direct pasting from Excel/Sheets
+    pasted_df = st.data_editor(
+        default_df, 
+        num_rows="dynamic", 
+        use_container_width=True,
+        hide_index=True
+    )
 
 st.divider()
 
-# Only run the comparison if both inputs have data
-if uploaded_filenames or expected_filenames:
-    st.subheader("3. Match Results")
+# Logic to handle the comparison
+if uploaded_names and not pasted_df.empty:
+    st.subheader("3. Comparison Results")
     
-    # Convert lists to sets for easy mathematical comparison
-    set_uploaded = set(uploaded_filenames)
-    set_expected = set(expected_filenames)
+    # Select which column contains the filenames
+    target_col = st.selectbox("Which column contains the File Names?", options=pasted_df.columns, index=2)
     
-    # Find the differences
-    missing_files = set_expected - set_uploaded  # In expected, but not uploaded
-    extra_files = set_uploaded - set_expected    # Uploaded, but not in expected
-    
-    # Check if they match perfectly
-    if not missing_files and not extra_files:
-        st.success("✅ Success! All uploaded files match the pasted list perfectly.")
+    # Clean the pasted names (remove empty rows and whitespace)
+    expected_names = pasted_df[target_col].dropna().apply(lambda x: str(x).strip()).tolist()
+    expected_names = [name for name in expected_names if name != ""]
+
+    set_uploaded = set(uploaded_names)
+    set_expected = set(expected_names)
+
+    # 1. Missing Files (In Table but not Uploaded)
+    missing = set_expected - set_uploaded
+    # 2. Extra Files (Uploaded but not in Table)
+    extra = set_uploaded - set_expected
+
+    res_col1, res_col2 = st.columns(2)
+
+    with res_col1:
+        if missing:
+            st.error(f"❌ Missing Files ({len(missing)})")
+            for m in missing:
+                st.write(f"⁃ `{m}`")
+        else:
+            st.success("✅ No missing files!")
+
+    with res_col2:
+        if extra:
+            st.warning(f"➕ Extra Files ({len(extra)})")
+            for e in extra:
+                st.write(f"⁃ `{e}`")
+        else:
+            st.info("ℹ️ No extra files found.")
+
+    if not missing and not extra and len(expected_names) > 0:
         st.balloons()
-    else:
-        st.error("⚠️ There are discrepancies between your uploads and your list.")
-        
-        # Display missing files (what was pasted but not uploaded)
-        if missing_files:
-            st.warning("🔍 **Missing Files (Pasted, but not uploaded):**")
-            for file in missing_files:
-                st.write(f"- `{file}`")
-                
-        # Display extra files (what was uploaded but not pasted)
-        if extra_files:
-            st.info("➕ **Extra Files (Uploaded, but not in your pasted list):**")
-            for file in extra_files:
-                st.write(f"- `{file}`")
+        st.success("Perfect Match! All items in the table are present in the upload.")
+
 else:
-    st.info("Upload files and paste your list to see the comparison results.")
+    st.warning("Waiting for both file uploads and pasted table data...")
