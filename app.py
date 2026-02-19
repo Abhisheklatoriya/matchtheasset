@@ -1,32 +1,37 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Smart File Matcher", layout="wide")
+st.set_page_config(page_title="Multi-Column File Matcher", layout="wide")
 
 # --- Reset Logic ---
 def reset_app():
+    # This clears the internal keys assigned to the widgets
     st.session_state["file_uploader_key"] += 1
     st.session_state["data_editor_key"] += 1
 
+# Initialize keys in session state if they don't exist
 if "file_uploader_key" not in st.session_state:
     st.session_state["file_uploader_key"] = 0
 if "data_editor_key" not in st.session_state:
     st.session_state["data_editor_key"] = 100
 
-# --- Header ---
+# --- Top Header & Reset Button ---
 top_col1, top_col2 = st.columns([5, 1])
 with top_col1:
-    st.title("📁 Smart File Matcher")
+    st.title("📁 Multi-Column File Matcher")
 with top_col2:
-    st.write(" ") 
+    st.write(" ") # Padding
     if st.button("🔄 Reset All", use_container_width=True, on_click=reset_app):
         st.rerun()
+
+st.write("Paste your 3 columns of filenames below and upload your files to verify they match.")
 
 # --- UI Layout ---
 col1, col2 = st.columns([1, 2])
 
 with col1:
     st.subheader("1. Upload Files")
+    # We use the key from session state to force a refresh on reset
     uploaded_files = st.file_uploader(
         "Upload files here", 
         accept_multiple_files=True,
@@ -38,8 +43,13 @@ with col1:
         st.success(f"✅ {len(uploaded_names)} files uploaded.")
 
 with col2:
-    st.subheader("2. Paste Expected Names")
-    init_df = pd.DataFrame([["", "", ""]] * 10, columns=["Col 1", "Col 2", "Col 3"])
+    st.subheader("2. Paste Expected Names (3 Columns)")
+    st.info("Paste your Excel/Table data below. All 3 columns will be checked.")
+    
+    # Initialize a table with 3 columns
+    init_df = pd.DataFrame([["", "", ""]] * 10, columns=["Col A", "Col B", "Col C"])
+    
+    # We use the key from session state to force a refresh on reset
     pasted_df = st.data_editor(
         init_df, 
         num_rows="dynamic", 
@@ -50,53 +60,41 @@ with col2:
 
 st.divider()
 
-# --- Match Logic ---
+# --- Process the comparison ---
+# Only show analysis if there is data to analyze
 has_uploaded = len(uploaded_names) > 0
+# Check if the dataframe has any non-empty text in it
 has_pasted = not pasted_df.replace('', pd.NA).dropna(how='all').empty
 
-if has_uploaded or has_pasted:
-    # Clean pasted data
+if not has_uploaded and not has_pasted:
+    st.info("Waiting for file uploads and pasted data...")
+else:
+    # Flatten all columns into a single list, clean whitespace, and remove empty strings
     raw_pasted_names = pasted_df.values.flatten()
     expected_names = set([str(name).strip() for name in raw_pasted_names if str(name).strip()])
 
-    # Direct Matches
+    st.subheader("3. Match Analysis")
+    
     missing = expected_names - uploaded_names
     extra = uploaded_names - expected_names
 
-    st.subheader("3. Match Analysis")
-
-    # --- THE "REMAINING TO BE MATCHED" LOGIC ---
-    # If there is exactly 1 missing and 1 extra, they are likely the same file
-    if len(missing) == 1 and len(extra) == 1:
-        st.warning("💡 **Potential Match Found!**")
-        m_file = list(missing)[0]
-        e_file = list(extra)[0]
-        st.info(f"The file `{e_file}` you uploaded is likely intended to match `{m_file}` from your list, but the names don't match exactly.")
+    if not missing and expected_names:
+        st.success("✨ All pasted filenames were found in the uploaded batch!")
+        if not extra:
+            st.balloons()
     
-    elif len(missing) > 0 and len(extra) > 0:
-        st.info(f"📝 You have {len(missing)} items left in your list and {len(extra)} extra files uploaded. Check for typos below.")
-
-    # Standard Results Display
     res_a, res_b = st.columns(2)
     
     with res_a:
         if missing:
-            st.error(f"❌ Missing from Uploads ({len(missing)})")
+            st.error(f"❌ Missing Files ({len(missing)})")
             for m in sorted(missing):
                 st.write(f"• `{m}`")
-        else:
-            st.success("✅ All listed names found!")
+        elif has_pasted:
+            st.success("✅ All listed files are present.")
 
     with res_b:
         if extra:
-            st.warning(f"➕ Unmatched Uploads ({len(extra)})")
+            st.warning(f"➕ Extra Files ({len(extra)})")
             for e in sorted(extra):
                 st.write(f"• `{e}`")
-        else:
-            st.success("✅ No extra files found!")
-
-    if not missing and not extra and expected_names:
-        st.balloons()
-        st.success("🎉 Perfect 1:1 Match!")
-else:
-    st.info("Upload files and paste your table to begin.")
