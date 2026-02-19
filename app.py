@@ -3,16 +3,40 @@ import pandas as pd
 
 st.set_page_config(page_title="Multi-Column File Matcher", layout="wide")
 
-st.title("📁 Multi-Column File Matcher")
+# --- Reset Logic ---
+def reset_app():
+    # This clears the internal keys assigned to the widgets
+    st.session_state["file_uploader_key"] += 1
+    st.session_state["data_editor_key"] += 1
+
+# Initialize keys in session state if they don't exist
+if "file_uploader_key" not in st.session_state:
+    st.session_state["file_uploader_key"] = 0
+if "data_editor_key" not in st.session_state:
+    st.session_state["data_editor_key"] = 100
+
+# --- Top Header & Reset Button ---
+top_col1, top_col2 = st.columns([5, 1])
+with top_col1:
+    st.title("📁 Multi-Column File Matcher")
+with top_col2:
+    st.write(" ") # Padding
+    if st.button("🔄 Reset All", use_container_width=True, on_click=reset_app):
+        st.rerun()
+
 st.write("Paste your 3 columns of filenames below and upload your files to verify they match.")
 
-# Create the UI layout
+# --- UI Layout ---
 col1, col2 = st.columns([1, 2])
 
 with col1:
     st.subheader("1. Upload Files")
-    uploaded_files = st.file_uploader("Upload files here", accept_multiple_files=True)
-    # Store names of files actually uploaded
+    # We use the key from session state to force a refresh on reset
+    uploaded_files = st.file_uploader(
+        "Upload files here", 
+        accept_multiple_files=True,
+        key=f"uploader_{st.session_state['file_uploader_key']}"
+    )
     uploaded_names = set([f.name for f in uploaded_files]) if uploaded_files else set()
     
     if uploaded_names:
@@ -25,28 +49,32 @@ with col2:
     # Initialize a table with 3 columns
     init_df = pd.DataFrame([["", "", ""]] * 10, columns=["Col A", "Col B", "Col C"])
     
-    # The Data Editor allows pasting directly from Excel/Sheets
+    # We use the key from session state to force a refresh on reset
     pasted_df = st.data_editor(
         init_df, 
         num_rows="dynamic", 
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        key=f"editor_{st.session_state['data_editor_key']}"
     )
 
 st.divider()
 
-# Process the comparison
-if not uploaded_names and pasted_df.values.flatten().tolist() == [""] * (len(pasted_df) * 3):
+# --- Process the comparison ---
+# Only show analysis if there is data to analyze
+has_uploaded = len(uploaded_names) > 0
+# Check if the dataframe has any non-empty text in it
+has_pasted = not pasted_df.replace('', pd.NA).dropna(how='all').empty
+
+if not has_uploaded and not has_pasted:
     st.info("Waiting for file uploads and pasted data...")
 else:
-    # 1. Flatten all 3 columns into a single list of names
-    # 2. Convert to string, strip whitespace, and remove empty entries
+    # Flatten all columns into a single list, clean whitespace, and remove empty strings
     raw_pasted_names = pasted_df.values.flatten()
     expected_names = set([str(name).strip() for name in raw_pasted_names if str(name).strip()])
 
     st.subheader("3. Match Analysis")
     
-    # Identify discrepancies
     missing = expected_names - uploaded_names
     extra = uploaded_names - expected_names
 
@@ -55,21 +83,18 @@ else:
         if not extra:
             st.balloons()
     
-    # Display Results in columns
     res_a, res_b = st.columns(2)
     
     with res_a:
         if missing:
             st.error(f"❌ Missing Files ({len(missing)})")
-            st.caption("These names were in your table but NOT uploaded:")
             for m in sorted(missing):
                 st.write(f"• `{m}`")
-        else:
-            st.write("✅ No missing files.")
+        elif has_pasted:
+            st.success("✅ All listed files are present.")
 
     with res_b:
         if extra:
             st.warning(f"➕ Extra Files ({len(extra)})")
-            st.caption("These files were uploaded but NOT in your table:")
             for e in sorted(extra):
                 st.write(f"• `{e}`")
