@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="4-Column File Matcher", layout="wide")
+st.set_page_config(page_title="Dynamic File Matcher", layout="wide")
 
 # --- Reset Logic ---
 def reset_app():
@@ -13,16 +13,22 @@ if "file_uploader_key" not in st.session_state:
 if "data_editor_key" not in st.session_state:
     st.session_state["data_editor_key"] = 100
 
-# --- Top Header & Reset Button ---
-top_col1, top_col2 = st.columns([5, 1])
+# --- Top Header & Controls ---
+top_col1, top_col2, top_col3 = st.columns([3, 2, 1])
+
 with top_col1:
-    st.title("📁 4-Column File Matcher")
+    st.title("📁 Dynamic File Matcher")
+
 with top_col2:
-    st.write(" ") 
+    # Use a number input to let users expand or shrink columns
+    num_cols = st.number_input("Number of Columns to Paste", min_value=1, max_value=20, value=4)
+
+with top_col3:
+    st.write(" ") # Padding
     if st.button("🔄 Reset All", use_container_width=True, on_click=reset_app):
         st.rerun()
 
-st.write("Paste your 4 columns of filenames below and upload your files to verify they match.")
+st.write(f"Paste your {num_cols} columns of filenames below and upload your files.")
 
 # --- UI Layout ---
 col1, col2 = st.columns([1, 2])
@@ -40,18 +46,20 @@ with col1:
         st.success(f"✅ {len(uploaded_names)} files uploaded.")
 
 with col2:
-    st.subheader("2. Paste Expected Names (4 Columns)")
-    st.info("Paste your Excel/Table data below. All 4 columns will be checked.")
+    st.subheader(f"2. Paste Expected Names ({num_cols} Columns)")
     
-    # Updated to 4 columns: Col A, B, C, and D
-    init_df = pd.DataFrame([["", "", "", ""]] * 10, columns=["Col A", "Col B", "Col C", "Col D"])
+    # Dynamically create the column list based on user input
+    column_names = [f"Col {i+1}" for i in range(num_cols)]
+    
+    # Initialize the table with the dynamic number of columns
+    init_df = pd.DataFrame([["" for _ in range(num_cols)]] * 10, columns=column_names)
     
     pasted_df = st.data_editor(
         init_df, 
         num_rows="dynamic", 
         use_container_width=True,
         hide_index=True,
-        key=f"editor_{st.session_state['data_editor_key']}"
+        key=f"editor_{st.session_state['data_editor_key']}_{num_cols}" # Key changes if col count changes
     )
 
 st.divider()
@@ -63,7 +71,7 @@ has_pasted = not pasted_df.replace('', pd.NA).dropna(how='all').empty
 if not has_uploaded and not has_pasted:
     st.info("Waiting for file uploads and pasted data...")
 else:
-    # Flatten all 4 columns into a single list
+    # Flatten all dynamic columns into a single list
     raw_pasted_names = pasted_df.values.flatten()
     expected_names = set([str(name).strip() for name in raw_pasted_names if str(name).strip()])
 
